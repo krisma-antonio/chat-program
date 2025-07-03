@@ -1,0 +1,5 @@
+For this update, I implemented most of the protocols for REGULAR user and MODERATOR user. 
+
+- REGULAR user can use NAME <name>, MSG <msg>, and EXIT commands.
+- I can send messages between clients
+- For MODERATOR user, the password is iAmModerator. They can BAN names and KICK connected clients and also set a TOPIC. When kicking a client though, I still have to manually close the socket of the client kicked but they can't write messages anymore because the window chat infinitely loops when they enter something. 
