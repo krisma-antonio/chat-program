@@ -101,32 +101,32 @@ main(int argc, char** argv)
 
    for(;;) {
 
-      struct sockaddr_in* clia = malloc(sizeof(struct sockaddr_in));
-      socklen_t addrlen = sizeof(struct sockaddr_in);
-      int clifd = accept(sockfd, (struct sockaddr*) clia, &addrlen);
-      if(clifd < 0) {
-         perror("Problem with accept()");
-         continue;
-      }
+       struct sockaddr_in* clia = malloc(sizeof(struct sockaddr_in));
+       socklen_t addrlen = sizeof(struct sockaddr_in);
+       int clifd = accept(sockfd, (struct sockaddr*) clia, &addrlen);
+       if(clifd < 0) {
+	  perror("Problem with accept()");
+	  continue;
+       }
 
-		// create client thread
-		if(clients+1 <= MAX_CLIENTS) {
-
-			CLIENT_SOCKET* clientSocket = malloc(sizeof(CLIENT_SOCKET));
-			clientSocket->clientSocketFD = clifd;
-			clientSocket->address = clia;
-
-			// store connected clients
-			connectedSockets[connectedSocketsCount++] = clientSocket;
-			add_client(clifd);
-			printf("Clients connected: %d\n", clients);
-
-			pthread_create(&(clientSocket)->id, NULL, handle_request, (void*)clientSocket);
-
-		} else {
-			printf("Too many clients connected. Closing...\n");
-			close(clifd);
-		}
+	// create client thread
+	if(clients+1 <= MAX_CLIENTS) {
+	
+		CLIENT_SOCKET* clientSocket = malloc(sizeof(CLIENT_SOCKET));
+		clientSocket->clientSocketFD = clifd;
+		clientSocket->address = clia;
+	
+		// store connected clients
+		connectedSockets[connectedSocketsCount++] = clientSocket;
+		add_client(clifd);
+		printf("Clients connected: %d\n", clients);
+	
+		pthread_create(&(clientSocket)->id, NULL, handle_request, (void*)clientSocket);
+	
+	} else {
+		printf("Too many clients connected. Closing...\n");
+		close(clifd);
+	}
    }
 }
 
@@ -159,7 +159,7 @@ add_client(int clifd)
 void*
 handle_request(void* p)
 {
-	CLIENT_SOCKET* client = (CLIENT_SOCKET*) p;
+   CLIENT_SOCKET* client = (CLIENT_SOCKET*) p;
 
    int port = ntohs(client->address->sin_port);
    char ip[INET_ADDRSTRLEN];
@@ -170,172 +170,173 @@ handle_request(void* p)
    }
 
    char* buf = (char*)malloc(sizeof(char) * BUF_SIZE);
-	char* msg = (char*)malloc(sizeof(char) * BUF_SIZE);
+   char* msg = (char*)malloc(sizeof(char) * BUF_SIZE);
    ssize_t numRead;
-	bool registration = true;
-	int errorNum;
-	char* username = (char*)malloc(sizeof(char)* (strlen(buf)+1));
+   bool registration = true;
+   int errorNum;
+   char* username = (char*)malloc(sizeof(char)* (strlen(buf)+1));
 
    // READ socket
    while((numRead = read(client->clientSocketFD, buf, BUF_SIZE)) > 0) {
 
-		// connection first, check registration packet
-		if(registration) {
-
-			// if MODERATOR
-			if(strncmp(buf, "MODERATOR ", 10) == 0) {
-      		char* password = &buf[10];
-				if(strncmp(password, storedPassword, 12) == 0) {
-					printf("Moderator entered the chatroom!\n");
-					sprintf(msg, "Moderator entered the chatroom!\n");
-
-					client->adminAccess = true;
-					registration = false;
-				} else {
-					printf("Wrong moderator password\n");
-				}
+	// connection first, check registration packet
+	if(registration) {
+	
+		// if MODERATOR
+		if(strncmp(buf, "MODERATOR ", 10) == 0) {
+			char* password = &buf[10];
+			
+			if(!strncmp(password, storedPassword, 12) == 0) {
+				printf("Wrong moderator password\n");
 			}
+			
+			printf("Moderator entered the chatroom!\n");
+			sprintf(msg, "Moderator entered the chatroom!\n");
+	
+			client->adminAccess = true;
+			registration = false;
+		}
 
-			// if REGULAR USER
-			else if(strncmp(buf, "NAME ", 5) == 0) {
-				 client->adminAccess = false;
-
-				 char* data = (char*)malloc(sizeof(char)* (strlen(buf)+1));
-
-				 strcpy(data, buf);
-
-				 // PARSE the name
-				 errorNum = test_name(data, &buf);
-
-				 // WRITE back name
-				 if(errorNum == 0) {
-					  strcpy(username, buf);
-					  username[strcspn(username, "\n")] = 0;
-
-					  // check if username is banned
-					  for(int i = 0; i < bannedCount; i++) {
-					  	 if(strcmp(bannedUsers[i], username) == 0) {
-						 	 printf("Username %s is banned! Cannot connect\n", username);
-							 sub_client(client->clientSocketFD);
-							 close(client->clientSocketFD);
-							 free(buf);
-							 return NULL;
-						 }
-					  }
-
-					  // check if username is already taken
-					  for(int i = 0; i < connectedSocketsCount; i++) {
-					     if(strcmp(connectedSockets[i]->name, username) == 0) {
-							 printf("Username %s is already taken! Cannot connect\n", username);
-							 sub_client(client->clientSocketFD);
-							 close(client->clientSocketFD);
-							 free(buf);
-							 return NULL;
-						  }
-					  }
-					  sprintf(msg, "%s entered the chatroom!\n", username);
-
-					  printf("%s entered the chatroom!\n", username);
-
-					  strcpy(client->name, username);
-
-					  registration = false;
-				 } else {
-					  //sprintf(msg, "%d ", errorNum);
-					  printf("ERROR: Invalid command!\n");
-				 }
-
-				 free(data);
-         } else {
-      		fprintf(stderr, "Error, expecting NAME or MODERATOR packet first\n");
-			}
-
-			//registration = false;
-		} else {
-
-			if(!client->adminAccess) {
-				// REGULAR USER actions
-				 if(strncmp(buf, "MSG ", 4) == 0) {
-					  // parse message and print to server
-					  char* message = &buf[4];
-					  // message[strcspn(message, "\n")] = 0;
-
-					  printf("%s: %s\n", username, message);
-					  sprintf(msg, "%s: %s\n", username, message);
-
-				 } else {
-					  // sprintf(msg, "%d ", CMD_INVALID);
-					  printf("ERROR: Invalid command!\n");
-				 }
-			 } else {
-				 // MODERATOR actions
-				 if(strncmp(buf, "KICK ", 5) == 0) {
-					 char* kickName = &buf[5];
-					 kickName[strcspn(kickName, "\n")] = 0;
-
-					 for(int i = 0; i < connectedSocketsCount; i++) {
-						 // printf("Names: %s\n", connectedSockets[i]->name);
-
-						 if(strcmp(connectedSockets[i]->name, kickName)==0) {
-							 //sub_client(connectedSockets[i]->clientSocketFD); 
-						 	 close(connectedSockets[i]->clientSocketFD);
-						    printf("%s is kicked out of the chatroom!\n", kickName);
-							 break;
-						 } else {
-  							 printf("%s is not found.\n", kickName);
-						 }
+		// if REGULAR USER
+		else if(strncmp(buf, "NAME ", 5) == 0) {
+			client->adminAccess = false;
+	
+			char* data = (char*)malloc(sizeof(char)* (strlen(buf)+1));
+	
+			 strcpy(data, buf);
+		
+			 // PARSE the name
+			 errorNum = test_name(data, &buf);
+		
+			 // WRITE back name
+			 if(errorNum == 0) {
+				  strcpy(username, buf);
+				  username[strcspn(username, "\n")] = 0;
+	
+				  // check if username is banned
+				  for(int i = 0; i < bannedCount; i++) {
+					 if(strcmp(bannedUsers[i], username) == 0) {
+						 printf("Username %s is banned! Cannot connect\n", username);
+						 sub_client(client->clientSocketFD);
+						 close(client->clientSocketFD);
+						 free(buf);
+						 return NULL;
 					 }
+				  }
 
-				 }	else if(strncmp(buf, "BAN ", 4) == 0)  {
-					 char* banName = &buf[4];
-					 banName[strcspn(banName, "\n")] = 0;
+				  // check if username is already taken
+				  for(int i = 0; i < connectedSocketsCount; i++) {
+				     	if(strcmp(connectedSockets[i]->name, username) == 0) {
+						 printf("Username %s is already taken! Cannot connect\n", username);
+						 sub_client(client->clientSocketFD);
+						 close(client->clientSocketFD);
+						 free(buf);
+						 return NULL;
+					}
+				  }
+				  sprintf(msg, "%s entered the chatroom!\n", username);
 
-					 // Add to ban list
-					 bannedUsers[bannedCount++] = strdup(banName);
-					 printf("Username %s has been banned by the moderator\n", banName);
-
-				 } else if(strncmp(buf, "TOPIC ", 6) == 0)  {
-					 char* topic = &buf[6];
-					 topic[strcspn(topic, "\n")] = 0;
-					 sprintf(msg, "A topic '%s' is set by the moderator!\n", topic);
-					 printf("A topic '%s' is set by the moderator!\n", topic);
-				 } else {
-				    printf("Invalid moderator command!\n");
-
-				 }
+				  printf("%s entered the chatroom!\n", username);
+	
+				  strcpy(client->name, username);
+	
+				  registration = false;
+			 } else {
+				  //sprintf(msg, "%d ", errorNum);
+				  printf("ERROR: Invalid command!\n");
 			 }
+
+		 	free(data);
+         	} else {
+	      		fprintf(stderr, "Error, expecting NAME or MODERATOR packet first\n");
 		}
 
-		// WRITE back messages to other clients
-		ssize_t msgLen = strlen(msg);
+	// registration is false
+	} else {
 
-		for(int i = 0; i < connectedSocketsCount; i++) {
-			if(connectedSockets[i]->clientSocketFD != client->clientSocketFD) {
-				if(write(connectedSockets[i]->clientSocketFD, msg, msgLen) != msgLen ) {
-					fprintf(stderr, "Couldn't perform write() to other clients\n");
-				 	break;
-				}
+		if(!client->adminAccess) {
+			// REGULAR USER actions
+			 if(strncmp(buf, "MSG ", 4) == 0) {
+				  // parse message and print to server
+				  char* message = &buf[4];
+				  // message[strcspn(message, "\n")] = 0;
+
+				  printf("%s: %s\n", username, message);
+				  sprintf(msg, "%s: %s\n", username, message);
+
+			 } else {
+				  // sprintf(msg, "%d ", CMD_INVALID);
+				  printf("ERROR: Invalid command!\n");
+			 }
+		 } else {
+			 // MODERATOR actions
+			 if(strncmp(buf, "KICK ", 5) == 0) {
+				 char* kickName = &buf[5];
+				 kickName[strcspn(kickName, "\n")] = 0;
+
+				 for(int i = 0; i < connectedSocketsCount; i++) {
+					 // printf("Names: %s\n", connectedSockets[i]->name);
+
+					 if(strcmp(connectedSockets[i]->name, kickName)==0) {
+						 //sub_client(connectedSockets[i]->clientSocketFD); 
+						 close(connectedSockets[i]->clientSocketFD);
+					    	 printf("%s is kicked out of the chatroom!\n", kickName);
+						 break;
+					 } else {
+						 printf("%s is not found.\n", kickName);
+					 }
+				  }
+
+			 } else if(strncmp(buf, "BAN ", 4) == 0)  {
+				 char* banName = &buf[4];
+				 banName[strcspn(banName, "\n")] = 0;
+
+				 // Add to ban list
+				 bannedUsers[bannedCount++] = strdup(banName);
+				 printf("Username %s has been banned by the moderator\n", banName);
+
+			 } else if(strncmp(buf, "TOPIC ", 6) == 0)  {
+				 char* topic = &buf[6];
+				 topic[strcspn(topic, "\n")] = 0;
+				 sprintf(msg, "A topic '%s' is set by the moderator!\n", topic);
+				 printf("A topic '%s' is set by the moderator!\n", topic);
+			 } else {
+			    printf("Invalid moderator command!\n");
+
+			 }
+		 }
+	}
+
+	// WRITE back messages to other clients
+	ssize_t msgLen = strlen(msg);
+
+	for(int i = 0; i < connectedSocketsCount; i++) {
+		if(connectedSockets[i]->clientSocketFD != client->clientSocketFD) {
+			if(write(connectedSockets[i]->clientSocketFD, msg, msgLen) != msgLen ) {
+				fprintf(stderr, "Couldn't perform write() to other clients\n");
+				break;
 			}
 		}
+	}
 
    }
 
-	/*// let user know who left the chatroom
-	sprintf(msg, "%s has left the chatroom.\n", client->name);
+   /*// let user know who left the chatroom
+   sprintf(msg, "%s has left the chatroom.\n", client->name);
 
-	ssize_t msgLen = strlen(msg);
-	for (int i = 0; i < connectedSocketsCount; i++) {
-    	if (connectedSockets[i] && connectedSockets[i]->clientSocketFD != client->clientSocketFD) {
-        	write(connectedSockets[i]->clientSocketFD, msg, msgLen);
-    	}
-	}*/
+   ssize_t msgLen = strlen(msg);
+   for (int i = 0; i < connectedSocketsCount; i++) {
+   if (connectedSockets[i] && connectedSockets[i]->clientSocketFD != client->clientSocketFD) {
+   	write(connectedSockets[i]->clientSocketFD, msg, msgLen);
+   }
+   }*/
 
    // CLEAN UP
-	sub_client(client->clientSocketFD);
-	close(client->clientSocketFD);
-	free(username);
-	free(buf);
-	free(msg);
+   sub_client(client->clientSocketFD);
+   close(client->clientSocketFD);
+   free(username);
+   free(buf);
+   free(msg);
    return NULL;
 }
 
@@ -347,10 +348,10 @@ test_name(char* userData, char** buffer)
       fprintf(stderr, "Error, expecting name packet first\n");
       return OUT_OF_ORDER;
    } else {
-      char* name = &userData[5];
+        char* name = &userData[5];
 
-	   int len = strlen(name);
-		*buffer = (char*)malloc(sizeof(char) * (len+1));
+	int len = strlen(name);
+	*buffer = (char*)malloc(sizeof(char) * (len+1));
 
 		/*
 		name[strcspn(name, "\n")] = 0;
@@ -380,8 +381,7 @@ test_name(char* userData, char** buffer)
           }
       }*/
 
-		strcpy(*buffer,name);
-
+      strcpy(*buffer,name);
       return NO_ERROR;
    }
 
